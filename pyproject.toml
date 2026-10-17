@@ -40,4 +40,4 @@ Homepage = "https://xsparkai.com/Spark-0/"
 include = ["spark0*", "data_tools*"]
 
 [tool.setuptools.package-data]
-data_tools = ["**/*.json"]
+data_tools = ["**/*.json", "**/*.npz"]

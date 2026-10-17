@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     command.add_argument(
         "--mano-model",
         default=str(default_mano_asset()),
-        help="Path to mano_right.npz for OpenAoE FK only (default: data_tools/data_alignment/assets/mano_right.npz, not bundled)",
+        help="Path to mano_right.npz for OpenAoE FK only (default: packaged data_tools/data_alignment/assets/mano_right.npz)",
     )
     command.add_argument(
         "--mano-assets",

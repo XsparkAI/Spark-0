@@ -132,7 +132,7 @@ bash scripts/run_retarget_batch.sh human_touch --shard X001 --mano-assets /path/
 bash scripts/process_data.sh openaoe data/retargeted/openaoe
 ```
 
-Run configs live in `scripts/retarget_configs/`; any extra flag overrides the config (e.g. `--limit 2 --dry-run`). MANO and the Wuji / Inspire / Fourier URDFs are **not bundled**: obtain MANO from [mano.is.tue.mpg.de](https://mano.is.tue.mpg.de) and place the files under `data_tools/data_alignment/assets/` or pass `--mano-assets` / `--mano-model`. See [data_tools/README.md](data_tools/README.md) for every source and the HDF5 layout.
+Run configs live in `scripts/retarget_configs/`; any extra flag overrides the config (e.g. `--limit 2 --dry-run`). The right-hand MANO model used by OpenAOE (`data_tools/data_alignment/assets/mano_right.npz`) is bundled. The official `mano_v1_2` release (needed by `--mano-assets` for HumanTouch and the `tactile.2d` heatmap) and the Wuji / Inspire / Fourier URDFs are not: obtain MANO from [mano.is.tue.mpg.de](https://mano.is.tue.mpg.de) and place the files under `data_tools/data_alignment/assets/` or pass `--mano-assets` / `--mano-model`. See [data_tools/README.md](data_tools/README.md) for every source and the HDF5 layout.
 
 <details>
 <summary>How retargeting works</summary>
@@ -366,6 +366,6 @@ Built on [StarVLA](https://github.com/starVLA/starVLA), [Qwen3-VL](https://githu
 
 ## License
 
-Released under the [MIT License](LICENSE). `third_party/starVLA/` keeps its own MIT license. Code adapted from XPolicyLab is Apache-2.0, as noted in each file header. MANO is not included and is governed by its own license.
+Released under the [MIT License](LICENSE). `third_party/starVLA/` keeps its own MIT license. Code adapted from XPolicyLab is Apache-2.0, as noted in each file header. The bundled `mano_right.npz` is derived from MANO and remains subject to the [MANO license](https://mano.is.tue.mpg.de).
 
 Contact: Tianxing Chen (chentianxing2002@gmail.com).

@@ -85,7 +85,7 @@ python -m data_tools.data_alignment.commands.retarget retarget-camera-aligned \
   --fps 30
 ~~~
 
-For OpenAOE, use the sample directory and provide a `mano_right.npz` converted from the official MANO release (not bundled; see [Required assets](#required-assets)):
+For OpenAOE, use the sample directory; FK uses the packaged `mano_right.npz` (see [Required assets](#required-assets)):
 
 ~~~bash
 python -m data_tools.data_alignment.commands.retarget retarget-camera-aligned \
@@ -195,6 +195,6 @@ For HumanTouch, only human_touch should be supplied to the command line; the rea
 
 ## Required assets
 
-The repository tracks only `data_alignment/assets/spark_camera_alignment.json` (Spark camera mount pose and EE orientation anchors).
+The repository tracks `data_alignment/assets/spark_camera_alignment.json` (Spark camera mount pose and EE orientation anchors) and `data_alignment/assets/mano_right.npz` (the right-hand MANO model OpenAOE FK reads by default).
 
-MANO is distributed under its own license and must be downloaded from [mano.is.tue.mpg.de](https://mano.is.tue.mpg.de). OpenAOE FK reads `data_alignment/assets/mano_right.npz` (or `MANO_RIGHT.pkl`) converted from that release. Official MANO `MANO_LEFT.pkl` and `MANO_RIGHT.pkl`, and the Wuji, Inspire, and Fourier URDFs, are not bundled. Place them under `data_tools/data_alignment/assets/`; the source-robot readers load those default paths. Pass `--mano-assets` or `--mano-model` where the command accepts them.
+The official MANO `MANO_LEFT.pkl` / `MANO_RIGHT.pkl` (from [mano.is.tue.mpg.de](https://mano.is.tue.mpg.de)) and the Wuji, Inspire, and Fourier URDFs are not bundled. Place them under `data_tools/data_alignment/assets/`; the source-robot readers load those default paths. Pass `--mano-assets` or `--mano-model` where the command accepts them.

@@ -4,11 +4,10 @@ Two call paths:
 
 * **OpenAoE / already-parameterized MANO** — ``ManoModel`` + ``forward_hand``
   evaluate stored ``global_orient / hand_pose / betas / transl``. Default asset
-  is ``assets/mano_right.npz`` (not bundled; ``MANO_RIGHT.pkl`` also works);
-  left uses a convention flag.
+  is the packaged right-hand ``mano_right.npz``; left uses a convention flag.
 * **EgoPro 21 keypoints** — official ``mano_v1_2`` (``MANO_LEFT.pkl`` /
   ``MANO_RIGHT.pkl``) via ``--mano-assets``. Those keypoints are retargeted
-  with ``mano_ik``; do not use the right-hand npz or a mirrored right hand.
+  with ``mano_ik``; do not use the packaged npz or a mirrored right hand.
 """
 
 from __future__ import annotations
@@ -230,10 +229,9 @@ class ManoModel:
         path = Path(asset_path)
         if not path.is_file():
             raise FileNotFoundError(
-                f"MANO model not found: {path}. MANO is licensed separately and is "
-                "not distributed with Spark-0: register at https://mano.is.tue.mpg.de, "
-                "then pass --mano-model <mano_v1_2/models/MANO_RIGHT.pkl> or place a "
-                "converted mano_right.npz under data_tools/data_alignment/assets/."
+                f"MANO model not found: {path}. The packaged right hand is "
+                "data_tools/data_alignment/assets/mano_right.npz; official MANO_*.pkl "
+                "files come from https://mano.is.tue.mpg.de (pass --mano-model)."
             )
         if path.suffix.lower() == ".pkl":
             data = _load_official_pkl(path)
