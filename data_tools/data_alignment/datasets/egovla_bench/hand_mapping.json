@@ -1,0 +1,46 @@
+{
+  "codec": "inspire12_wuji20_vitra_index_sign_unbounded_v2",
+  "method": "sparse_index_and_sign_only",
+  "canonical_to_wuji": [
+    4,
+    0,
+    1,
+    3,
+    2,
+    9,
+    14,
+    19,
+    10,
+    11,
+    13,
+    12
+  ],
+  "signs": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "unmapped_wuji_zero": [
+    5,
+    6,
+    7,
+    8,
+    15,
+    16,
+    17,
+    18
+  ],
+  "forward_clip": false,
+  "reverse_clip": false,
+  "gain": null,
+  "offset": null
+}

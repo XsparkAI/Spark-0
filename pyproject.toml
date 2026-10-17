@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spark0"
+version = "0.1.0"
+description = "Spark-0: a tactile-aware vision-language-action policy for dexterous bimanual manipulation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+# The client (spark0.serving.client + the image codec) needs only these; the
+# server additionally needs the training stack installed by install.sh
+# (torch + third_party/starVLA).
+dependencies = [
+    "numpy",
+    "msgpack",
+    "websockets>=13",
+    "pyyaml",
+    "pillow",
+    "opencv-python",
+]
+
+[project.optional-dependencies]
+data = [
+    "h5py",
+    "pandas",
+    "pyarrow",
+    "scipy",
+    "av",
+    "mcap",
+    "tqdm",
+    "lerobot>=0.4",
+]
+
+[project.urls]
+Homepage = "https://xsparkai.com/Spark-0/"
+
+[tool.setuptools.packages.find]
+include = ["spark0*", "data_tools*"]
+
+[tool.setuptools.package-data]
+data_tools = ["**/*.json"]

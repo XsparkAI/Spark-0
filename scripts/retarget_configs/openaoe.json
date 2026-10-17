@@ -1,0 +1,17 @@
+{
+  "name": "openaoe",
+  "description": "Full OpenAoE-2000h sample-directory run; sources are 30 FPS with head RGB only.",
+  "input_dir": "data/retarget_src/OpenAoE-2000h",
+  "output_dir": "data/retargeted/openaoe",
+  "camera_config": "data_tools/data_alignment/assets/spark_camera_alignment.json",
+  "workers": 16,
+  "threads_per_worker": 1,
+  "fps": 30,
+  "action_steps": 1,
+  "ik_solver": "analytic",
+  "ik_stride": 2,
+  "ik_max_iterations": 35,
+  "max_rms_error_m": 0.03,
+  "mano_left_convention": "mirror_model",
+  "dataset_name": "openaoe"
+}

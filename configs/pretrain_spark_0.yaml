@@ -1,0 +1,214 @@
+# Spark-0 pretrain recipe (visual + tactile). Finetune from it with sft_spark_0.
+#
+# Arch: DA3 spatial alignment, flexible views, action queries with no DiT
+# future slots (0821 arch), BFA off, plus tactile:
+#   - tactile_fusion: default  (joint_stream, value-gated tactile -> action)
+#   - tactile_align: default   (head-camera contact heatmap)
+#   - shortcut mask 0.1        (forces VL -> tactile -> action on tactile rows)
+# Schedule: batch 6/GPU, 500k steps, 20k warmup, save every 50k.
+#
+# Monitor tactile_extra_temb_rel_norm for tactile health, not the gate
+# scalars (see tactile_fusion/default.yaml for the gate settings).
+
+run_root_dir: ../checkpoints    # set by scripts/train.sh ($SPARK_0_CKPT_ROOT)
+seed: 0
+
+# Robot layout only (keys / dims / camera catalog): configs/embodiments/.
+embodiment: tianji_marvin_wuji
+
+# ── Deploy-only (read from the live config at serve time) ─────────────────────
+execute_horizon: null      # sync path: rows executed per cycle; null = action_horizon
+rtc: null                  # null = sync; <stem> = configs/rtc/<stem>.yaml
+
+# ── Tactile switches ─────────────────────────────────────────────────────────
+# null = off. A stem merges its YAML and turns the path on; scripts/train.sh writes
+# the `enable` flags, so do not set them inline.
+tactile_fusion: default    # tactile encoder + Action-DiT fusion
+tactile_align: default     # train-only contact-region -> visual-token alignment
+
+# ── Data ─────────────────────────────────────────────────────────────────────
+# null = the dataset passed with `scripts/train.sh --data <name>` (needs
+# meta/modality.json). Entries name datasets under data/lerobot/.
+# List form: `- dataset: <name>` + `weight: <prob>`. V-only datasets may sit
+# next to tactile ones (their rows use the no_tactile token).
+data_mixture: null
+
+wandb_entity: null
+wandb_project: Spark-0
+is_debug: false
+version_id: '0.21'         # config schema version; do not change
+
+framework:
+  name: QwenPI_v3
+  qwenvl:
+    base_vlm: ./playground/Pretrained_models/Qwen3-VL-4B-Instruct
+    attn_implementation: flash_attention_2
+
+  # Learnable query slots appended at the end of the Qwen sequence.
+  action_query:
+    enable: true
+    num_query: 64
+    kv_mode: query_plus_visual     # DiT reads queries + full VL sequence;
+                                   # query_only = queries only (less GPU)
+    init_std: 0.02
+
+  action_model:
+    action_model_type: LayerwiseFM # layerwise flow-matching DiT
+    action_dim: 58                 # model dims, see embodiments/tianji_marvin_wuji.yaml
+    state_dim: 58
+    continuous_state: true
+    action_horizon: 50
+    repeated_diffusion_steps: 6    # noise samples per obs; multiplies DiT batch
+    num_inference_timesteps: 4     # Euler steps at inference
+    add_pos_embed: true
+    max_seq_len: 1024
+    num_target_vision_tokens: 0    # 0 = no GR00T future slots; action tokens
+                                   # read VL / queries directly
+    # Shortcut mask: on this fraction of tactile rows, the action expert's VL
+    # cross-attn output is zeroed, so semantics must relay through the tactile
+    # tokens; otherwise the direct VL path always wins. Needs joint_stream.
+    shortcut_mask_prob: 0.1
+    shortcut_mask_warmup_steps: 20000  # ramp 0 -> prob; = num_warmup_steps so
+                                       # nothing is forced through a random encoder
+    # Flow-matching timestep sampling: Beta(alpha, beta), scaled by noise_s.
+    noise_beta_alpha: 1.5
+    noise_beta_beta: 1.0
+    noise_s: 0.999
+    num_timestep_buckets: 1000
+    # Loss re-weighting; these values = plain mean (all off).
+    action_loss_weight:
+      horizon_power: 0.0           # w_h = (h+1)^-p, down-weights far chunk rows
+      exec_rows: 0                 # extra weight on the first N executed rows
+      exec_weight: 1.0
+      keys: {}                     # per-action-key weights
+    diffusion_model_cfg:
+      action_dit_hidden_dim: 1024
+      dropout: 0.1
+      final_dropout: true
+      interleave_self_attention: true  # odd DiT blocks are self-attn only
+      norm_type: ada_norm
+      positional_embeddings: null
+      attention_head_dim: 64
+      use_canonical_forward: true
+      attention_bias: true
+      activation_fn: gelu-approximate
+      num_embeds_ada_norm: 1000
+      upcast_attention: false
+      norm_elementwise_affine: false
+      norm_eps: 1.0e-05
+      max_num_positional_embeddings: 512
+
+  # DA3 spatial alignment: distill Depth-Anything-3 features into a VLM layer.
+  spatial_alignment:
+    enable: true
+    teacher_model_path: ./playground/Pretrained_models/DA3-LARGE
+    teacher_feature_dim: 1024      # ViT-L embed dim
+    teacher_feat_layer: 23         # last ViT-L block
+    teacher_image_size: 336        # multiple of 14 (sft_spark_0 uses 392)
+    teacher_preserve_aspect: true  # no-op while obs_image_size is square
+    teacher_view_mode: independent # one teacher pass per camera
+    teacher_ref_view_strategy: first   # `joint` view mode only
+    teacher_chunk_size: 0          # >0 caps samples per teacher forward (VRAM)
+    teacher_dtype: bfloat16
+    align_view_indices: null       # null = every present packed view
+    align_layer_index: 25          # must be odd (see interleave_self_attention)
+    loss_coeff: 0.2
+    use_vlm_norm: true
+    target_spatial_zscore: false
+    add_target_pos_embed: true     # 2D sin-cos PE on teacher targets
+    target_pos_embed_scale: 0.1
+    projector_hidden_dim: null     # null = 2 x teacher_feature_dim
+
+  token_prune:
+    enable: false                  # BFA++ visual-token pruning
+
+datasets:
+  vla_data:
+    dataset_py: lerobot_datasets
+    data_mix: xpolicylab_runtime   # built by scripts/train.sh from data_mixture
+    data_root_dir: ../data/lerobot  # set by scripts/train.sh ($SPARK_0_DATA_ROOT/lerobot)
+    lerobot_version: v3.0
+    video_backend: pyav            # decoder; avoid decord / opencv on AV1 exports
+
+    # Loader
+    per_device_batch_size: 6
+    num_workers: 8
+    pin_memory: true
+    persistent_workers: true
+    prefetch_factor: 2
+
+    # Sampling
+    balance_dataset_weights: false # false = data_mixture weights are probs
+    balance_trajectory_weights: false
+    sample_without_replacement: true   # single dataset only; with >1 dataset it
+                                       # warns and falls back to weighted sampling
+
+    # Cameras (named keys in obs_image_size = active cameras)
+    obs_image_size:
+      cam_high: [384, 384]
+      cam_left_wrist: [256, 256]
+      cam_right_wrist: [256, 256]
+    flexible_views: true           # samples may miss trailing cameras (masked)
+    required_views: null
+    observation_indices: [0]       # current frame only
+
+    # State / action representation
+    include_state: true
+    state_history_frames: 3
+    sample_dtype: float32
+    ee_in_camera_frame: true       # required by cam_* pose formats
+    camera_extrinsics_key: null    # null = from meta/modality.json
+    camera_extrinsics_semantics: null
+    state_pose_format: cam_abs_xyz_rot6d
+    action_pose_format: delta_xyz_rot6d
+    state_normalization: q99
+    action_normalization: q99
+    pose_normalization: hold_centered_perrow  # identity delta -> 0 (anti-windup)
+    action_mode: abs               # only valid value with delta pose formats
+    action_mode_apply_keys: null
+    action_mode_state_map: {}
+    ref_noise:                     # parked: scripts/train.sh rejects prob > 0
+      prob: 0.0
+      rot_deg: 10.0
+      trans_m: 0.02
+
+    exclude_episodes: []
+    delete_pause_frame: false
+
+trainer:
+  # Fresh pretrain: no resume, no warm start.
+  resume_from: null
+  is_resume: false
+  pretrained_checkpoint: null
+  reload_modules: null
+
+  max_train_steps: 500000
+  num_warmup_steps: 20000
+  save_interval: 50000
+  eval_interval: 10000             # fixed-batch train MSE, not held-out
+  save_format: pt
+
+  # Per-module LR; groups for disabled modules are ignored.
+  learning_rate:
+    base: 2.5e-05
+    qwen_vl_interface: 1.0e-05
+    action_model: 0.0001
+    project_layers: 0.0001
+    spatial_align: 0.0001
+    token_prune: 0.001
+    tactile_encoder: 0.0001
+    tactile_fusion: 0.0001
+    tactile_align: 0.0001
+    tactile_future_contact: 0.0001
+  lr_scheduler_type: cosine_with_min_lr
+  scheduler_specific_kwargs:
+    min_lr: 5.0e-07
+  freeze_modules: ''               # comma-separated module patterns
+  logging_frequency: 10
+  gradient_clipping: 1.0
+  gradient_accumulation_steps: 1
+  repeated_diffusion_steps: null   # null = use framework.action_model value
+  optimizer:
+    betas: [0.9, 0.95]
+    eps: 1.0e-08
+    weight_decay: 1.0e-08

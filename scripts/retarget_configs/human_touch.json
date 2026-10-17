@@ -1,0 +1,16 @@
+{
+  "name": "human_touch",
+  "description": "HumanTouch (EgoPro) annotated MCAP shards; pass --shard X001 to select one demo subdirectory.",
+  "input_dir": "data/retarget_src/human_touch/{shard}",
+  "output_dir": "data/retargeted/human_touch/{shard}",
+  "camera_config": "data_tools/data_alignment/assets/spark_camera_alignment.json",
+  "workers": 16,
+  "threads_per_worker": 1,
+  "fps": 30,
+  "action_steps": 1,
+  "ik_solver": "analytic",
+  "ik_stride": 2,
+  "ik_max_iterations": 35,
+  "max_rms_error_m": 0.03,
+  "dataset_name": "human_touch"
+}

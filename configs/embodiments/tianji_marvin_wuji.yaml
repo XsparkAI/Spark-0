@@ -1,0 +1,64 @@
+# Tianji Marvin dual-arm + Wuji Hand, head + both wrist cameras.
+#
+# Describes the RAW data layout only: camera catalog, keys, per-key dims and
+# which keys hold EE poses. Everything a training run decides (active
+# cameras, chunk length, normalization, observation indices, pose formats)
+# lives in the train config; see the list at the bottom.
+#
+# Dims — DATA (raw LeRobot, 54-d) vs MODEL (trained, 58-d):
+#   DATA  state/action: [L_ee_pose(7: xyz+quat_wxyz), L_hand(20),
+#                        R_ee_pose(7: xyz+quat_wxyz), R_hand(20)]  = 54
+#   MODEL state/action: [L_ee <pose_format>(9), L_hand(20),
+#                        R_ee <pose_format>(9), R_hand(20)]        = 58
+
+embodiment_tag: new_embodiment
+
+# Full camera catalog; the train config picks the active subset via
+# datasets.vla_data.obs_image_size (named keys) or datasets.vla_data.video_keys.
+video_keys:
+  - video.cam_high
+  - video.cam_left_wrist
+  - video.cam_right_wrist
+
+language_keys:
+  - annotation.human.action.task_description
+
+# Ordered key -> raw dim; flat-vector ranges are derived cumulatively.
+state_keys:
+  left_ee_poses: 7
+  left_ee_joint_states: 20
+  right_ee_poses: 7
+  right_ee_joint_states: 20
+
+action_keys:
+  left_ee_poses: 7
+  left_ee_joint_states: 20
+  right_ee_poses: 7
+  right_ee_joint_states: 20
+
+# EE-pose keys stored raw as 7-d xyz_wxyz and re-encoded for the model.
+# Formats (name -> model dim):
+#   raw             (7): [xyz, quat_wxyz] unchanged
+#   abs_xyz_rot6d   (9): absolute pose, rotation as rot6d
+#   delta_xyz_rot6d (9): action only; chunk-wise delta vs the current state
+#                        pose, expressed in that frame. The deployment codec
+#                        composes the predicted chunk back onto that pose.
+# Normalization stats are computed over the converted values.
+#
+# The state/action formats themselves are set per run by the train config's
+# required datasets.vla_data.{state,action}_pose_format; scripts/train.sh freezes
+# them into the checkpoint's embodiment_spec, which eval replays. A
+# `state:` / `action:` or `ref_noise:` key here is only a fallback for
+# launches that bypass scripts/train.sh.
+pose_representation:
+  keys: [left_ee_poses, right_ee_poses]
+  raw_format: xyz_wxyz      # stored layout in the LeRobot data (7-d)
+
+# Set in the train config, not here (scripts/train.sh validates them and freezes
+# them into the checkpoint; a value written here is ignored):
+#   action_horizon        -> framework.action_model.action_horizon
+#   state_normalization   -> datasets.vla_data.state_normalization
+#   action_normalization  -> datasets.vla_data.action_normalization
+#   observation_indices   -> datasets.vla_data.observation_indices
+#   active video_keys     -> datasets.vla_data.video_keys and/or
+#                            datasets.vla_data.obs_image_size (named keys)

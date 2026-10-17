@@ -1,0 +1,31 @@
+# RTC (real-time chunking, arXiv:2506.07339) deployment config.
+#
+# Training-free: applied when the policy server and eval client start
+# (spark0/serving/launch.py), never read from the checkpoint. A model
+# config opts in with a top-level pointer:
+#   rtc: default   # -> this file
+#   rtc: null      # synchronous path
+# For a variant, copy this file to a new stem and point `rtc:` at it.
+
+# ── Server: framework.action_model.rtc.* ──
+# Same allowlist validation as --backend-override; null leaves the
+# framework default untouched.
+enable: true
+inference_delay: 8
+# Naming trap: execution_horizon (lerobot convention) is the GUIDANCE WINDOW
+# length, i.e. the queue-remaining threshold the client prefetches at when
+# fire_at_remaining is unset. It is NOT the rows executed per cycle.
+# null = guide over the whole leftover chunk.
+execution_horizon: null
+prefix_attention_schedule: null  # null = framework default (exp)
+max_guidance_weight: null        # null = framework default (10.0)
+mode: pigdm                      # only servable mode (simulated_delay needs a training-time loss)
+
+# ── Client: async prefetch loop in model.py ──
+# Rows remaining when the next chunk is prefetched; replan period =
+# action_horizon - fire_at_remaining (34 with H=50 -> every 16 steps).
+# Clamped to H-1. null = derive from execution_horizon / execute_horizon.
+fire_at_remaining: 34
+delay_window: 5   # sliding window (rounds) of measured inference delays
+debug: true
+max_failures: 3   # consecutive async failures before an env falls back to sync

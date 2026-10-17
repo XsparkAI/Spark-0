@@ -1,0 +1,160 @@
+# Full-hand 320-taxel glove (HumanTouch / Spark-0 export), trusted region force.
+# Selected by `tactile_fusion: default`; `enable` / `action_fusion.enable` are
+# omitted because scripts/train.sh writes them.
+#
+# Streams:
+#   region (fast)  2x6x20x1 -> TemporalConv -> 12 tokens -> DiT stream x tactile_patch_gate
+#                  + raw 240-d flatten -> PatchToTemb -> AdaLN extra_temb (ungated;
+#                    the zero-init fc2 is that path's own scale)
+#   3D (slow)      320 pts in head_camera, current frame only
+#                  -> 12 tokens -> DiT stream x tactile_gate
+# Gates apply only to rows that carry tactile; other rows keep the
+# no_tactile placeholder.
+#
+# 3D is deliberately weak through its interface (no FiLM, 2-layer point MLP,
+# no token mixer, single frame, independent dropout), NOT through gate_l1.
+# A 3D row is dropped to no_tactile only when the cloud is missing / NaN /
+# saturated (quality_* gates), never for lack of contact.
+#
+# Ablations: region off -> `patch: off` + streams.region_pressure.enable: false.
+# fast_enable: false with `patch: temb` fails at construction (patch_cond_dim=0).
+
+fast_enable: true
+slow_enable: true
+
+hierarchy:
+  layout: fast_then_slow
+  fusion: concat
+
+streams:
+  region_pressure:
+    enable: true
+    role: fast
+    num_hands: 2
+    num_regions: 6                # palm + 5 fingers
+    history_len: 20               # 60 Hz -> ~333 ms (file stores 50): covers
+                                  # grasp settle + short slip without bloating FiLM
+    channel_dim: 1
+    data_key: tactile/region_pressure_vector
+    batch_key: region_pressure
+
+  taxel_pressure_3d:
+    enable: true
+    role: slow
+    num_hands: 2
+    num_taxels: 320
+    history_len: 1                # current frame only: a window would give the
+                                  # DiT a second hand-pose trajectory. >1 makes
+                                  # the packer stack episode rows.
+    point_dim: 4                  # xyz + pressure
+    xyz_frame: head_camera        # label only; the encoder does not transform
+    geometry_carrier: point_set
+    type: region_set_encoder
+    num_region_tokens: 6
+    num_point_tokens: 0
+    use_fourier_features: true
+    fourier_bands: 4
+    keep_zero_pressure_points: true
+    pool_mode: softmax            # fingertip contact is sparse (1-2 of 16 pads)
+    trim_frac: 0.0                # robust_mean only; >0 would trim the contact pad
+    drop_stuck_taxels: true
+    stuck_std: 1.0e-4
+    stuck_mean: 0.05
+    stuck_abs: 1.5                # |p| valve in conditioned units (1.0 = dataset
+                                  # q99); the only stuck test that fires at T=1
+    token_mixer_layers: 0         # 3D only; region does not use this
+    # Anatomical map (= modality.json region_slices): taxels 0-239 palm ->
+    # region 0, then 16 pads each for thumb/index/middle/ring/pinky -> 1-5.
+    # Must be explicit: `uniform` would cut contiguous 320/6 blocks and split
+    # fingers across tokens.
+    region_map: [
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+      2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+      3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,
+      4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
+      5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,
+    ]
+    data_key: tactile/taxel_pressure_3D
+    batch_key: taxel_pressure_3d
+
+# Sized for ~2000 h of data.
+tactile_expert:
+  hidden_dim: 512
+  num_layers: 2                   # 3D point MLP only; region uses temporal_layers
+  output_dim: 1024                # must equal action_dit_hidden_dim
+  temporal_layers: 3
+  temporal_kernel: 3
+  no_tactile_token: true
+  # Geometry gate (finite xyz AND pressure, not contact): one placed hand ->
+  # 0.5, both -> 1.0, broken cloud -> 0.0. 0.25 drops only rows where both
+  # hands are broken; a placed but non-touching hand stays (its pose is signal).
+  quality_min_valid_frac: 0.25
+  quality_max_sat_frac: 0.85      # safety valve: 85% of 640 pads saturated
+  quality_sat_abs: 1.5            # never fires on clean data
+
+  # Future-contact aux head (train-only; inference never runs it). horizon
+  # counts 60 Hz glove frames of the exported future window (10 ~ 167 ms),
+  # not policy steps, capped at the exported length. Supervises region force
+  # only, never xyz.
+  future_contact:
+    enable: false
+    variant: aux_head
+    horizon: 10
+    num_subwindows: 3
+    loss_coeff: 0.05
+    contact_abs: 0.05
+    bin_edges: [0.05, 0.25, 0.6]
+    supervise_xyz: false
+
+pressure:
+  log1p: true
+  scale:
+    region_pressure: auto         # auto = derived from dataset q99
+    taxel_pressure_3d: auto
+  center: "none"
+  append_delta: false
+
+action_fusion:
+  mode: joint_stream              # tactile tokens co-evolve in the DiT stream;
+                                  # append_context = static per-layer (old ckpts)
+  joint_gate_mode: value          # tactile->action gates scale the stream tokens.
+                                  # `bias` (legacy additive) leaks ~4.5e-5 at gate 0,
+                                  # which bf16 rounds away, so the gate never moves.
+  joint_bias_scale: 6.0           # action->tactile bias: -6 * (1 - sigmoid(g))
+  joint_a2t_gate_init: 1.0        # -> -1.6 (~20% leak) instead of -3 (~5%);
+                                  # only shortens warm-up
+  layer_selection: even_all
+  # Two independent coins per tactile row: region (modality) and 3D (slow).
+  # Result: both 85% | region-only 15% | 3D-only 0% | neither 0%.
+  # Region-only must stay: the quality gate produces it at inference when the
+  # cloud is broken. 3D-only never occurs at inference, and "neither" is
+  # already covered by the V-only rows of the mixture.
+  modality_dropout_prob: 0.0      # region (fast); 0 = always present
+  slow_dropout_prob: 0.15         # 3D; mirrors the quality gate
+  patch: temb                     # region window -> FiLM (AdaLN) every step
+  patch_hidden: 512
+  # 0.1 sits ~33x above the DiT LayerNorm knee (sqrt(norm_eps) = 3.2e-3), so
+  # the stream starts at full amplitude instead of inside the eps hole where
+  # the Jacobian blows up. The temb path keeps its own zero-init scale, so
+  # step 0 is still unFiLMed.
+  gate_init: 0.1
+  patch_gate_init: 0.1
+  gate_l1: 0.0                    # MUST stay 0 under joint_stream: AdamW turns the
+                                  # constant L1 subgradient into a full lr step and
+                                  # pins tactile_gate at ~0, switching 3D off
+                                  # (observed in the 0901 pretrain). 3D distrust
+                                  # comes from slow_dropout_prob + quality_* instead.
+  gate_mask_eps: 1.0e-6           # eval: |gate| <= eps -> 3D keys leave the softmax
+                                  # (floor for a gate trained to zero)
+  refresh_mode: both              # every infer re-encodes current 3D + region
+  slow_refresh_every: 1           # 1 = no 3D token cache; deploy speedup is RTC
+  vt_to_v_distill_coeff: 0.0
+  no_tactile_token: true

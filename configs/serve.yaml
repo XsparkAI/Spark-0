@@ -1,0 +1,25 @@
+# Spark-0 policy server defaults (scripts/serve.sh --config). Any key can be
+# overridden on the command line with --set KEY=VALUE.
+#
+# `auto` replays the checkpoint's saved training config, which is what you
+# want unless the divergence IS the experiment. `execute_horizon` and `rtc`
+# are not set here: they are deploy-time knobs on the live model config
+# (configs/<recipe>.yaml), resolved by spark0.serving.launch.
+
+robot: tianji_marvin_wuji  # arm_dim / ee_dim lookup in spark0/utils/robot_state.py
+action_type: ee            # Spark-0 recipes train EE poses + hand joints
+
+unnorm_key: auto
+image_size: auto
+max_infer_batch: auto      # cap on examples per forward; auto = whole batch
+include_state: auto
+state_history_frames: auto
+ee_in_camera_frame: auto
+ee_camera_pose: auto       # pinned world_from_camera [x,y,z,qw,qx,qy,qz] if obs has no extrinsics
+ee_camera_extrinsics_semantics: auto
+ee_camera_axes: auto
+flexible_views: auto
+required_views: auto
+tactile: auto              # false = disable the glove (A/B the same checkpoint)
+tactile_fast: auto         # false = drop the region-force (fast) stream
+tactile_slow: auto         # false = drop the 3D-taxel (slow) stream

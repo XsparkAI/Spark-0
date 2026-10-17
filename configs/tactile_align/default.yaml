@@ -1,0 +1,42 @@
+# Contact heatmap -> Qwen visual tokens (train-only alignment).
+# Selected by `tactile_align: default` in a recipe (null = off). Every knob is
+# listed at its code default; `enable` is omitted because scripts/train.sh writes it.
+
+align_view_indices: [0]        # exactly one packed view (usually head)
+align_layer_index: 25          # prefer odd under interleave_self_attention
+
+heatmap:
+  obs_hw: null                 # null = heatmap already on the VLM obs plane
+  normalize: max
+
+loss:
+  infonce_coeff: 0.1
+  contact_map_coeff: 0.1
+  dice_coeff: 0.1
+  pressure_bin_coeff: 0.05
+  temperature: 0.07
+  focal_gamma: 2.0
+
+projector:
+  hidden_dim: 256
+  out_dim: 128
+  use_vlm_norm: true
+
+region:
+  region_map: null             # null = heatmap-only
+  num_hands: 2
+  num_regions_per_hand: 8
+  force_bins: [0.05, 0.2, 1.0]
+  baseline_mode: per_glove
+
+skip:
+  require_present2d: true
+  min_align_weight: 1.0e-6
+  # Sparse-contact gate: supervise only frames with real contact, judged on
+  # the RAW heatmap (never the max-normalized one).
+  min_contact_frac: 0.005      # skip frames with 0 < contact mass < this; 0 = gate off
+  min_contact_abs: 0.05        # per-pixel contact threshold, raw units
+  contact_log1p: false         # true = threshold log1p(raw) instead of raw
+  idle_keep_prob: 0.05         # keep all-zero frames with this prob
+
+align_dropout_prob: 0.0

@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pip_tmp/
+
+# Datasets, checkpoints and run artifacts (see README "Directory layout").
+/data/
+/checkpoints/
+/results/
+/eval_logs/
+/.generated/
+wandb/
+third_party/starVLA/playground/
+
+# MANO is distributed under its own license (https://mano.is.tue.mpg.de);
+# never commit the model files.
+**/mano_v1_2/
+MANO_*.pkl

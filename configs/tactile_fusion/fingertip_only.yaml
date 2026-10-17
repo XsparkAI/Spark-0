@@ -1,0 +1,113 @@
+# EgoPro 80-taxel fingertip glove: trusted region force + noisy 3D condition.
+# Selected by `tactile_fusion: fingertip_only`; `enable` /
+# `action_fusion.enable` are omitted because scripts/train.sh writes them.
+# Same design as default.yaml (see there for the rationale); differences are
+# 5 finger regions and 80 points.
+#
+# Streams:
+#   region (fast)  2x5x20x1 -> TemporalConv -> 10 tokens -> DiT stream x tactile_patch_gate
+#                  + raw 200-d flatten -> PatchToTemb -> AdaLN extra_temb (ungated)
+#   3D (slow)      80 pts in head_camera, current frame only
+#                  -> 10 tokens -> DiT stream x tactile_gate
+#
+# Ablations: 3D-only -> `patch: off`.
+# fast_enable: false with `patch: temb` fails at construction (patch_cond_dim=0).
+
+fast_enable: true
+slow_enable: true
+
+hierarchy:
+  layout: fast_then_slow
+  fusion: concat
+
+streams:
+  region_pressure:
+    enable: true
+    role: fast
+    num_hands: 2
+    num_regions: 5                # thumb -> pinky
+    history_len: 20               # 60 Hz -> ~333 ms (file stores 50)
+    channel_dim: 1
+    data_key: tactile/region_pressure_vector
+    batch_key: region_pressure
+
+  taxel_pressure_3d:
+    enable: true
+    role: slow
+    num_hands: 2
+    num_taxels: 80
+    history_len: 1                # current frame only (see default.yaml)
+    point_dim: 4                  # xyz + pressure
+    xyz_frame: head_camera        # label only; the encoder does not transform
+    geometry_carrier: point_set
+    type: region_set_encoder
+    num_region_tokens: 5
+    num_point_tokens: 0
+    use_fourier_features: true
+    fourier_bands: 4
+    keep_zero_pressure_points: true
+    pool_mode: softmax            # fingertip contact is sparse (1-2 of 16 pads)
+    trim_frac: 0.0                # robust_mean only; >0 would trim the contact pad
+    drop_stuck_taxels: true
+    stuck_std: 1.0e-4
+    stuck_mean: 0.05
+    stuck_abs: 1.5                # |p| valve in conditioned units (1.0 = q99 ~ 25 N,
+                                  # 1.5 ~ 131 N); the only stuck test at T=1
+    token_mixer_layers: 0         # 3D only; region does not use this
+    region_map: uniform           # 80 / 5 = 16 contiguous pads per finger
+    data_key: tactile/taxel_pressure_3D
+    batch_key: taxel_pressure_3d
+
+# Sized for ~2000 h of data.
+tactile_expert:
+  hidden_dim: 512
+  num_layers: 2                   # 3D point MLP only; region uses temporal_layers
+  output_dim: 1024                # must equal action_dit_hidden_dim
+  temporal_layers: 3
+  temporal_kernel: 3
+  no_tactile_token: true
+  # Geometry gate (finite xyz AND pressure, not contact). EgoPro places a
+  # hand's 80 pads all-or-nothing, so one hand -> 0.5, both -> 1.0, broken
+  # cloud -> 0.0. 0.25 drops only rows where both hands are broken.
+  quality_min_valid_frac: 0.25
+  quality_max_sat_frac: 0.85      # safety valve: 85% of 160 pads over ~131 N
+  quality_sat_abs: 1.5            # never fires on clean data
+
+  # Future-contact aux head (train-only); see default.yaml.
+  future_contact:
+    enable: false
+    variant: aux_head
+    horizon: 10                   # 60 Hz glove frames (~167 ms), not policy steps
+    num_subwindows: 3
+    loss_coeff: 0.05
+    contact_abs: 0.05
+    bin_edges: [0.05, 0.25, 0.6]
+    supervise_xyz: false
+
+pressure:
+  log1p: true
+  scale:
+    region_pressure: auto         # auto = derived from dataset q99
+    taxel_pressure_3d: auto
+  center: "none"
+  append_delta: false
+
+# Gate / dropout rationale: see default.yaml.
+action_fusion:
+  mode: joint_stream              # tactile tokens co-evolve in the DiT stream
+  joint_gate_mode: value          # tactile->action gates scale the stream tokens
+  joint_bias_scale: 6.0           # action->tactile bias: -6 * (1 - sigmoid(g))
+  joint_a2t_gate_init: 1.0        # -> -1.6 (~20% leak)
+  layer_selection: even_all
+  modality_dropout_prob: 0.0      # region (fast); 0 = always present
+  slow_dropout_prob: 0.15         # 3D; both 85% | region-only 15%
+  patch: temb                     # region window -> FiLM (AdaLN) every step
+  patch_hidden: 512
+  gate_init: 0.1                  # above the DiT LayerNorm knee (3.2e-3)
+  patch_gate_init: 0.1
+  gate_l1: 0.0                    # MUST stay 0 under joint_stream
+  gate_mask_eps: 1.0e-6           # eval: |gate| <= eps -> 3D keys leave the softmax
+  refresh_mode: both              # every infer re-encodes current 3D + region
+  slow_refresh_every: 1           # 1 = no 3D token cache; deploy speedup is RTC
+  vt_to_v_distill_coeff: 0.0
+  no_tactile_token: true
