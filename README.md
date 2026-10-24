@@ -353,14 +353,11 @@ Built on [StarVLA](https://github.com/starVLA/starVLA), [Qwen3-VL](https://githu
 ## Citation
 
 ```bibtex
-@misc{chen2026spark0scalingspatiallyaligned,
-      title={Spark-0: Scaling Spatially Aligned Tactile Pretraining for Robot Dexterous Manipulation}, 
-      author={Tianxing Chen and Wenwei Lin and Chuqiao Lyu and Peicheng Xiang and Junyuan Tang and Tian Nian and Zijian Cai and Kehe Ye and Chenze Yu and Wenxuan Zhu and Eric J. Chen and Yan Qin and Yue Chen and Tongyu Wu and Junhao Gong and Kai-Chong Lei and Jiahao Zhang and Kailun Su and Qiwei Liang and Renjing Xu and Ping Luo and Wenbo Ding},
-      year={2026},
-      eprint={2610.22342},
-      archivePrefix={arXiv},
-      primaryClass={cs.RO},
-      url={https://arxiv.org/abs/2610.22342}, 
+@article{chen2026spark,
+  title={Spark-0: Scaling Spatially Aligned Tactile Pretraining for Robot Dexterous Manipulation},
+  author={Chen, Tianxing and Lin, Wenwei and Lyu, Chuqiao and Xiang, Peicheng and Tang, Junyuan and Nian, Tian and Cai, Zijian and Ye, Kehe and Yu, Chenze and Zhu, Wenxuan and others},
+  journal={arXiv preprint arXiv:2610.22342},
+  year={2026}
 }
 ```
 
